@@ -1,0 +1,43 @@
+@page "/counter"
+@inject NavigationManager NavigationManager
+@inject IJSRuntime jsRuntime
+
+<h1>Counter</h1>
+
+<p>Current count: @currentCount</p>
+
+<button class="btn btn-primary" @onclick="IncrementCount">Click me</button>
+
+@code {
+    private int currentCount = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var token = await ReadCookie("BLJWToken");
+        Console.WriteLine($"User Init Token { token }");
+
+        if (string.IsNullOrEmpty(token))
+        {
+            NavigationManager.NavigateTo("/");
+        }
+        else
+        {
+            if (!MainLayout.ValidateJWT(token))
+            {
+                NavigationManager.NavigateTo("/");
+            }
+        }
+    }
+
+    private void IncrementCount()
+    {
+        currentCount++;
+    }
+    
+    private async Task<string> ReadCookie(string name)
+    {
+        var value = await jsRuntime.InvokeAsync<string>("methods.ReadCookie", name);
+        return value;
+    }
+
+}

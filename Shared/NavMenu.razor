@@ -1,0 +1,92 @@
+﻿@inject IMessageService MessageService
+@inject IJSRuntime jsRuntime
+
+<style>
+    .sidebar {
+        background-color: #084b38 !important;
+        background-image: none !important;
+    }
+</style>
+
+<div class="top-row pl-4 navbar navbar-dark">
+    <a class="navbar-brand" href="">JWTLogin</a>
+    <button class="navbar-toggler" @onclick="ToggleNavMenu">
+        <span class="navbar-toggler-icon"></span>
+    </button>
+</div>
+
+<div class="@NavMenuCssClass" @onclick="ToggleNavMenu">
+    <ul class="nav flex-column">
+        <li class="nav-item px-3">
+            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
+                <span class="oi oi-home" aria-hidden="true"></span> Home
+            </NavLink>
+        </li>
+        <li class="nav-item px-3" style=@NavLoggedInClass>
+            <NavLink class="nav-link" href="counter">
+                <span class="oi oi-plus" aria-hidden="true"></span> Counter
+            </NavLink>
+        </li>
+        <li class="nav-item px-3">
+            <NavLink class="nav-link" href="fetchdata" style=@NavLoggedInClass>
+                <span class="oi oi-list-rich" aria-hidden="true"></span> Fetch data
+            </NavLink>
+        </li>
+    </ul>
+</div>
+
+@code {
+    private bool collapseNavMenu = true;
+
+    private string NavMenuCssClass => collapseNavMenu ? "collapse" : null;
+
+    private string LogOutCssStyle = "display: none;"; // => (collapseNavMenu & Globals.isLoggedIn) ? "display: block;" :
+
+    private string NavLoggedInClass => Globals.isLoggedIn ? "display: block;" : "display: none;";
+
+    private void ToggleNavMenu()
+    {
+        collapseNavMenu = !collapseNavMenu;
+        LogOutCssStyle = Globals.isLoggedIn ? "display: block;" : "display: none;";
+    }
+
+    protected async override void OnInitialized()
+    {
+        bool LoggedIn = false;
+
+        UserInfo.Token = await ReadCookie("MKDAToken");
+        if (string.IsNullOrEmpty(UserInfo.Token))
+        {
+            LoggedIn = false;
+        }
+        else
+        {
+            UserInfo.User = await ReadCookie("MKDAUser");
+            LoggedIn = true;
+        }
+        Globals.isLoggedIn = LoggedIn;
+        // subscribe to OnMessage event
+        MessageService.OnMessage += MessageHandler;
+        Console.WriteLine("NavMenu Init");
+        Console.WriteLine("isLoggedIn {0}", Globals.isLoggedIn);
+        Console.WriteLine("collapseNavMenu {0}", collapseNavMenu);
+
+        LogOutCssStyle = (collapseNavMenu & Globals.isLoggedIn) ? "display: block;" : "display: none;";
+
+        StateHasChanged();
+    }
+
+    private void MessageHandler(string message)
+    {
+        Console.WriteLine("NavMenu message received {0}", message);
+        Console.WriteLine("isLoggedIn {0}", Globals.isLoggedIn);
+        StateHasChanged();
+    }
+
+    private async Task<string> ReadCookie(string name)
+    {
+        var value = await jsRuntime.InvokeAsync<string>("methods.ReadCookie", name);
+        return value;
+    }
+
+}

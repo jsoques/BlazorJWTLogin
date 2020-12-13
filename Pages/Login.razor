@@ -1,0 +1,223 @@
+@page "/login"
+@inject HttpClient Http
+@inject IJSRuntime jsRuntime
+@inject NavigationManager NavigationManager
+@inject IMessageService MessageService
+@using Newtonsoft.Json
+@using System.Net
+@using JWTLogin.components
+
+<link href="css/login.css" rel="stylesheet" />
+
+@if (!LoggedIn)
+{
+    <EditForm Model="loginModel" OnValidSubmit="@LoginUser">
+        <DataAnnotationsValidator />
+        <ValidationSummary />
+
+        <div class="container">
+            <div class="card card-container">
+                <!-- <img class="profile-img-card" src="//lh3.googleusercontent.com/-6V8xOA6M7BA/AAAAAAAAAAI/AAAAAAAAAAA/rzlHcD0KYwo/photo.jpg?sz=120" alt="" /> -->
+                <img id="profile-img" class="profile-img-card" src="//ssl.gstatic.com/accounts/ui/avatar_2x.png" />
+                <p id="profile-name" class="profile-name-card"></p>
+                <div class="form-signin">
+                    <span id="reauth-email" class="reauth-email"></span>
+
+                    @* <JWTLogin.components.Tooltip Text="Hello"> *@
+                    <InputText class="form-control" id="Name" @bind-Value="loginModel.Name" placeholder="User name"
+                        required autofocus />
+                    @* </JWTLogin.components.Tooltip> *@
+
+                    <InputText type="password" class="form-control" id="Password" @bind-Value="loginModel.Password"
+                        placeholder="Password" required />
+
+                    <button class="btn btn-lg btn-primary btn-block btn-signin" type="submit">Sign in</button>
+                </div><!-- /form -->
+
+            </div><!-- /card-container -->
+        </div><!-- /container -->
+
+    </EditForm>
+
+
+}
+
+    <br>
+
+    @code {
+    LoginModel loginModel = new LoginModel();
+
+    private bool LoggedIn { get; set; }
+
+    private async void LoginUser()
+    {
+        await jsRuntime.InvokeAsync<string>("methods.ShowWaitWindow");
+        Console.WriteLine("..onSubmit....");
+        await ConnectToken();
+        StateHasChanged();
+        await jsRuntime.InvokeAsync<string>("methods.HideWaitWindow");
+    }
+
+    private async Task ConnectToken()
+    {
+        using (var client = new HttpClient())
+        {
+
+            //var body = JsonConvert.SerializeObject(loginModel);
+
+            //var values = new FormUrlEncodedContent(Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, string>>(body));
+
+            //Console.WriteLine("Body: " + body);
+            //Console.WriteLine("Values: " + values);
+
+            HttpResponseMessage result = null;
+            
+            try
+            {
+                //result = await client.PostAsync(Endpoints.aAPISignInURL, values);
+                result = await client.PostAsJsonAsync(Endpoints.aAPISignInURL, loginModel);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Error 1");
+                await jsRuntime.InvokeAsync<object>("methods.HideWaitWindow");
+                await jsRuntime.InvokeAsync<object>("alert", ex.ToString());
+            }
+
+            string resultContent = await result.Content.ReadAsStringAsync();
+
+            Console.WriteLine("Result {0}", result);
+            Console.WriteLine("Content {0}", resultContent);
+
+            if (result.StatusCode == HttpStatusCode.OK)
+            {
+                var tokenobj = Newtonsoft.Json.Linq.JObject.Parse(resultContent);
+                var val = (string)tokenobj["accessToken"];
+
+                loginModel.Password = "******";
+                //UserInfo.User = loginModel.email;
+                //UserInfo.Token = val;
+                UserInfo.Validate(val);
+                LoggedIn = true;
+                Globals.isLoggedIn = true;
+                Globals.access_token = val;
+                Globals.user_name = loginModel.Name;
+                Globals.status = UserInfo.Status;
+                Globals.role = UserInfo.Role;
+
+                CreateCookie("BLJWToken", val, 1);
+                CreateCookie("BLJWUser", UserInfo.User, 1);
+                MessageService.SendMessage($"Welcome {UserInfo.User}");
+
+                if(Globals.status == "DISABLED")
+                {
+                    await jsRuntime.InvokeAsync<object>("methods.HideWaitWindow");
+                    await jsRuntime.InvokeAsync<object>("alert", "Your account is not activated, please activate!");
+                    LoggedIn = false;
+                    UserInfo.Reset();
+                    var test = await jsRuntime.InvokeAsync<string>("methods.LogOut");
+                    
+                } else
+                {
+                    if (!ValidateJWT(UserInfo.Token))
+                    {
+                        LoggedIn = false;
+                        UserInfo.Reset();
+                    }
+                    else
+                    {
+                        LoggedIn = true;
+                    }
+                }
+               
+            }
+            else
+            {
+                Console.WriteLine("Error 2");
+                await jsRuntime.InvokeAsync<object>("methods.HideWaitWindow");
+                StateHasChanged();
+                await jsRuntime.InvokeAsync<object>("alert", resultContent);
+            }
+
+        }
+    }
+
+    private async void CreateCookie(string name, string value, int days)
+    {
+        var test = await jsRuntime.InvokeAsync<string>("methods.CreateCookie", name, value, days);
+    }
+
+    private async Task<string> ReadCookie(string name)
+    {
+        var value = await jsRuntime.InvokeAsync<string>("methods.ReadCookie", name);
+        return value;
+    }
+
+    protected async override void OnInitialized()
+    {
+        UserInfo.Token = await ReadCookie("BLJWToken");
+        Console.WriteLine("Login Init");
+        Console.WriteLine(UserInfo.Token);
+        if (string.IsNullOrEmpty(UserInfo.Token))
+        {
+            LoggedIn = false;
+        }
+        else
+        {
+            UserInfo.User = await ReadCookie("BLJWUser");
+
+            if (!ValidateJWT(UserInfo.Token))
+            {
+                LoggedIn = false;
+                UserInfo.Reset();
+            }
+            else
+            {
+                LoggedIn = true;
+            }
+
+        }
+        Globals.isLoggedIn = LoggedIn;
+        Globals.access_token = UserInfo.Token;
+        Globals.user_name = UserInfo.User;
+        if (LoggedIn)
+        {
+            MessageService.SendMessage($"Welcome {UserInfo.User}");
+        }
+        else
+        {
+            MessageService.SendMessage("");
+        }
+        StateHasChanged();
+    }
+
+    private bool ValidateJWT(string jwttoken)
+    {
+        var rv = false;
+        var handler = new JwtSecurityTokenHandler();
+        var token = handler.ReadJwtToken(jwttoken);
+
+        //Console.WriteLine("JWT Token {0}", token);
+        var rightnow = DateTime.Now;
+        //Console.WriteLine("RightNow {0}", rightnow);
+        //Console.WriteLine("JWT Valid to {0}", token.ValidTo);
+        rv = (token.ValidTo >= rightnow);
+        if (!rv)
+        {
+            UserInfo.Reset();
+        }
+        return rv;
+    }
+
+    private void SendMessage()
+    {
+        MessageService.SendMessage("Message from Home Component to Main Layout Component!");
+    }
+
+    private void ClearMessages()
+    {
+        MessageService.ClearMessages();
+    }
+
+}
+

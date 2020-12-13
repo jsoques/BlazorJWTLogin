@@ -1,0 +1,107 @@
+@inherits LayoutComponentBase
+@inject IJSRuntime jsRuntime
+@implements IDisposable
+@inject IMessageService MessageService
+@inject NavigationManager NavigationManager
+
+<div class="page">
+    <div class="sidebar">
+        <NavMenu />
+    </div>
+
+    <div class="main">
+        <div class="top-row px-4">
+            @if (!string.IsNullOrEmpty(userName))
+            {
+                <span>@userName &nbsp;&nbsp;<a id="logout" href="#" onclick="methods.LogOut(); return false;"
+                        class="ml-md-auto">Logout</a></span>
+            }
+
+        </div>
+
+        <div class="content px-4">
+            @Body
+        </div>
+    </div>
+</div>
+
+@code{
+    private string userName;
+    private List<string> messages = new List<string>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        // subscribe to OnMessage event
+        MessageService.OnMessage += MessageHandler;
+
+        var token = await ReadCookie("BLJWToken");
+        var user = await ReadCookie("BLJWUser");
+        Console.WriteLine("MainLayout Init");
+        Console.WriteLine("Token {0}", token);
+        Console.WriteLine("UserInfo {0}", user);
+        UserInfo.Token = token;
+        UserInfo.User = user;
+        if (string.IsNullOrEmpty(UserInfo.Token) || string.IsNullOrEmpty(token))
+        {
+            userName = "";
+        }
+        else
+        {
+            userName = $"Welcome {UserInfo.User}";
+            messages.Add($"Welcome {userName}");
+        }
+        StateHasChanged();
+
+    }
+
+    private async Task<string> ReadCookie(string name)
+    {
+        var value = await jsRuntime.InvokeAsync<string>("methods.ReadCookie", name);
+        return value;
+    }
+
+    public void Dispose()
+    {
+        // unsubscribe from OnMessage event
+        MessageService.OnMessage -= MessageHandler;
+    }
+
+    private void MessageHandler(string message)
+    {
+        Console.WriteLine("MainLayout message received {0}", message);
+        userName = message;
+        if (message != null)
+            messages.Add(message);
+        else
+            messages.Clear();
+
+        StateHasChanged();
+    }
+
+
+    [JSInvokable]
+    public static Task<string[]> logOut()
+    {
+        Globals.isLoggedIn = false;
+        return Task.FromResult(new string[] { "BLJWToken", "BLJWUser" });
+    }
+
+    public static bool ValidateJWT(string jwttoken)
+    {
+        var rv = false;
+        var handler = new JwtSecurityTokenHandler();
+        var token = handler.ReadJwtToken(jwttoken);
+        Console.WriteLine("JWT Token {0}", token);
+        var rightnow = DateTime.Now;
+        Console.WriteLine("RightNow {0}", rightnow);
+        Console.WriteLine("JWT Valid to {0}", token.ValidTo);
+        rv = (token.ValidTo >= rightnow);
+        if (!rv)
+        {
+            UserInfo.Reset();
+        }
+        return rv;
+    }
+
+
+}
