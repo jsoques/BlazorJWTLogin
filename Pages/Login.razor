@@ -24,7 +24,7 @@
                     <span id="reauth-email" class="reauth-email"></span>
 
                     @* <JWTLogin.components.Tooltip Text="Hello"> *@
-                    <InputText class="form-control" id="Name" @bind-Value="loginModel.Name" placeholder="User name"
+                    <InputText class="form-control" id="Name" @bind-Value="loginModel.Email" placeholder="User name"
                         required autofocus />
                     @* </JWTLogin.components.Tooltip> *@
 
@@ -101,7 +101,7 @@
                 LoggedIn = true;
                 Globals.isLoggedIn = true;
                 Globals.access_token = val;
-                Globals.user_name = loginModel.Name;
+                Globals.user_name = loginModel.Email;
                 Globals.status = UserInfo.Status;
                 Globals.role = UserInfo.Role;
 
